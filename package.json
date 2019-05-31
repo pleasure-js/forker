@@ -1,0 +1,30 @@
+{
+  "name": "pleasure-daemonizer",
+  "author": "Martin Rafael <tin@devtin.io>",
+  "version": "1.0.0",
+  "main": "dist/pleasure-daemonizer.js",
+  "module": "dist/pleasure-daemonizer.esm.js",
+  "license": "MIT",
+  "scripts": {
+    "build": "rollup -c",
+    "build:live": "nodemon -w src --exec yarn build",
+    "build:docs": "jsdoc2md --template README.hbs --files dist/pleasure-daemonizer.js > README.md"
+  },
+  "devDependencies": {
+    "jsdoc-to-markdown": "^5.0.0",
+    "nodemon": "^1.19.1",
+    "rollup": "^1.12.4",
+    "rollup-plugin-alias": "^1.5.1",
+    "rollup-plugin-babel-minify": "^8.0.0",
+    "rollup-plugin-commonjs": "^10.0.0",
+    "rollup-plugin-json": "^4.0.0"
+  },
+  "dependencies": {
+    "cli-table": "^0.3.1",
+    "fs-extra": "^8.0.1",
+    "is-running": "^2.1.0",
+    "moment": "^2.24.0",
+    "socket.io": "^2.2.0",
+    "socket.io-client": "^2.2.0"
+  }
+}
