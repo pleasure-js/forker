@@ -17,6 +17,9 @@ var path = _interopDefault(require('path'));
 var fs = _interopDefault(require('fs'));
 var isRunning = _interopDefault(require('is-running'));
 var fsExtra = require('fs-extra');
+var pidusage = _interopDefault(require('pidusage'));
+var Promise$1 = _interopDefault(require('bluebird'));
+var filesize = _interopDefault(require('filesize'));
 var io = _interopDefault(require('socket.io-client'));
 
 /**
@@ -207,6 +210,8 @@ const defaultConfig = Object.assign({
   ip: '127.0.0.1'
 }, envConfig);
 
+const pidInfo = Promise$1.promisify(pidusage);
+
 const spawnDefaultOptions$1 = {
   cwd: process.cwd()
 };
@@ -251,9 +256,9 @@ class DaemonizerServer {
       });
 
       // status of the process
-      socket.on('status', (payload) => {
+      socket.on('status', async (payload) => {
         try {
-          socket.emit('status', { res: this.status(payload) });
+          socket.emit('status', { res: await this.status(payload) });
         } catch (err) {
           socket.emit('status', { err: err.message });
           console.log(`error>>>`, err);
@@ -398,13 +403,30 @@ class DaemonizerServer {
     return child.pid
   }
 
-  status () {
+  async status ({ id }) {
     // connects to main thread via socket
     // gets status
     const processTable = [];
-    this._runningProcesses.forEach(runningProcess => {
-      processTable.push(runningProcess.toJSON());
+
+    await Promise$1.each(this._runningProcesses, async (runningProcess) => {
+      if (id && runningProcess.id !== id) {
+        return
+      }
+
+      let cpu = 0;
+      let memory = 0;
+      let elapsed = 0;
+      if (runningProcess.pid) {
+        ({ cpu = 0, memory = 0, elapsed = 0 } = await pidInfo(runningProcess.pid));
+      }
+
+      processTable.push(Object.assign(runningProcess.toJSON(), {
+        cpu: cpu.toFixed(1),
+        memory: filesize(memory),
+        elapsed: elapsed / 1000
+      }));
     });
+
     return processTable
   }
 }

@@ -9,6 +9,11 @@ import fs from 'fs'
 import isRunning from 'is-running'
 import { readJsonSync, writeJsonSync } from 'fs-extra'
 import { defaultConfig } from './default-config.js'
+import pidusage from 'pidusage'
+import Promise from 'bluebird'
+import filesize from 'filesize'
+
+const pidInfo = Promise.promisify(pidusage)
 
 const spawnDefaultOptions = {
   cwd: process.cwd()
@@ -58,9 +63,9 @@ export class DaemonizerServer {
       })
 
       // status of the process
-      socket.on('status', (payload) => {
+      socket.on('status', async (payload) => {
         try {
-          socket.emit('status', { res: this.status(payload) })
+          socket.emit('status', { res: await this.status(payload) })
         } catch (err) {
           socket.emit('status', { err: err.message })
           console.log(`error>>>`, err)
@@ -205,13 +210,30 @@ export class DaemonizerServer {
     return child.pid
   }
 
-  status () {
+  async status ({ id }) {
     // connects to main thread via socket
     // gets status
     const processTable = []
-    this._runningProcesses.forEach(runningProcess => {
-      processTable.push(runningProcess.toJSON())
+
+    await Promise.each(this._runningProcesses, async (runningProcess) => {
+      if (id && runningProcess.id !== id) {
+        return
+      }
+
+      let cpu = 0
+      let memory = 0
+      let elapsed = 0
+      if (runningProcess.pid) {
+        ({ cpu = 0, memory = 0, elapsed = 0 } = await pidInfo(runningProcess.pid))
+      }
+
+      processTable.push(Object.assign(runningProcess.toJSON(), {
+        cpu: cpu.toFixed(1),
+        memory: filesize(memory),
+        elapsed: elapsed / 1000
+      }))
     })
+
     return processTable
   }
 }
