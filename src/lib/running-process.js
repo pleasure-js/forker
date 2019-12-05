@@ -147,6 +147,7 @@ export class RunningProcess extends EventEmitter {
       this._spawnChild = null
     }
     this.emit('exit')
+    this.removeAllListeners()
     return this
   }
 

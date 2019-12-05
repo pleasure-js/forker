@@ -113,7 +113,7 @@ export class DaemonizerServer {
   _exit (runningProcess) {
     runningProcess.pid && console.log(`Closing process '${ runningProcess.pid }'`)
     const runningProcessIndex = this._runningProcesses.indexOf(runningProcess)
-    runningProcess.removeAllListeners()
+    // runningProcess.removeAllListeners()
 
     if (runningProcessIndex >= 0) {
       this._runningProcesses.splice(runningProcessIndex, 1)
