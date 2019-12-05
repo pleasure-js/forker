@@ -142,11 +142,11 @@ export class RunningProcess extends EventEmitter {
    */
   stop () {
     this._stop = true
-    this.emit('exit')
     if (this._spawnChild) {
-      this._spawnChild.kill()
+      this._spawnChild.kill('SIGINT')
       this._spawnChild = null
     }
+    this.emit('exit')
     return this
   }
 
