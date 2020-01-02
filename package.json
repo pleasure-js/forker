@@ -1,5 +1,5 @@
 {
-  "name": "pleasure-daemonizer",
+  "name": "@pleasure-js/daemonizer",
   "author": "Martin Rafael <tin@devtin.io>",
   "version": "1.0.0",
   "main": "dist/pleasure-daemonizer.js",
