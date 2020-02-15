@@ -1,16 +1,9 @@
-import { spawn } from 'child_process'
-import { RunningProcess } from './running-process.js'
-import Table from 'cli-table'
-import moment from 'moment'
-import http from 'http'
 import io from 'socket.io-client'
-import path from 'path'
-import fs from 'fs'
 import { defaultConfig as defaultServerConfig } from './default-config.js'
 import { DaemonizerServer } from './daemonizer-server.js'
 
 export const daemonizerConfig = {
-  daemonServerConnectionTimeout: 5000
+  daemonServerConnectionTimeout: process.env.DAEMONIZER_TIMEOUT || 30000
 }
 
 const spawnDefaultOptions = {
@@ -36,10 +29,10 @@ export class Daemonizer {
     this.io = io(`http://${ this.serverConfig.ip }:${ this.serverConfig.port }`)
   }
 
-  _resolver (resolve, reject) {
+  _resolver (resolve, reject, timeout = this.config.daemonServerConnectionTimeout) {
     const to = setTimeout(() => {
       reject(new Error('Timed out.'))
-    }, this.config.daemonServerConnectionTimeout)
+    }, timeout)
 
     return ({ err, res }) => {
       clearTimeout(to)
