@@ -10,7 +10,7 @@ Papo
       command: 'pls',
       args: ['app', 'start'],
       options: {
-        cwd: path.join(__dirname, '../../pleasure-dummy-vue-project'),
+        cwd: path.join(__dirname, '../../dummy-vue-project'),
       }
     }
   })

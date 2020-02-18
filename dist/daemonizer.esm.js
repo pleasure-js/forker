@@ -1,22 +1,24 @@
 /*!
- * pleasure-daemonizer v1.0.0
- * (c) 2019-2019 Martin Rafael <tin@devtin.io>
+ * @pleasure-js/daemonizer v1.0.0
+ * (c) 2019-2020 Martin Rafael <tin@devtin.io>
  * MIT
  */
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
-import 'cli-table';
-import 'moment';
-import http from 'http';
+import Kill from 'tree-kill';
+import util from 'util';
+import Koa from 'koa';
 import SocketIO from 'socket.io';
 import path from 'path';
 import fs from 'fs';
 import isRunning from 'is-running';
 import { writeJsonSync, readJsonSync } from 'fs-extra';
 import pidusage from 'pidusage';
-import Promise$1 from 'bluebird';
+import Promise from 'bluebird';
 import filesize from 'filesize';
-import io from 'socket.io-client';
+import { Transformers, Schema } from '@devtin/schema-validator';
+
+const kill = util.promisify(Kill);
 
 /**
  * @typedef {Object} RunningProcessOptions - Spawn arguments
@@ -157,14 +159,15 @@ class RunningProcess extends EventEmitter {
   /**
    * Re-starts the program
    */
-  stop () {
-    this._stop = true;
-    this.emit('exit');
-    if (this._spawnChild) {
-      this._spawnChild.kill();
-      this._spawnChild = null;
+  async stop () {
+    if (this._stop) {
+      return
     }
-    return this
+    this._stop = true;
+    await kill(this.pid);
+    this._spawnChild = null;
+    this.emit('exit');
+    this.removeAllListeners();
   }
 
   toJSON () {
@@ -202,33 +205,78 @@ if (process.env.DAEMONIZER_DAEMON_CONFIG) {
 
 const defaultConfig = Object.assign({
   runningThread: path.join(__dirname, '../.running'),
-  port: process.env.DAEMONIZER_DEAMON_PORT || 1111,
+  port: 1111,
+  autoClose: false,
   ip: '127.0.0.1'
 }, envConfig);
 
-const pidInfo = Promise$1.promisify(pidusage);
+const UUIDPattern = /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/;
+Transformers.id = {
+  settings: {
+    loaders: [{
+      type: String,
+      regex: [UUIDPattern, `{ value } is not a valid UUID`]
+    }],
+    required: false,
+    default () {
+      // GUID / UUID RFC4122 version 4 taken from: https://stackoverflow.com/a/2117523/1064165
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        let r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16)
+      })
+    }
+  }
+};
+
+const RequestSchema = new Schema({
+  id: {
+    type: 'id',
+    required: false
+  },
+  command: {
+    type: String,
+    required: [true, `Please enter the command to execute`]
+  },
+  payload: {
+    type: Array,
+    required: false,
+    default () {
+      return []
+    }
+  }
+});
+
+const pidInfo = Promise.promisify(pidusage);
 
 const spawnDefaultOptions$1 = {
   cwd: process.cwd()
 };
 
 /**
- * @classdec DaemonizerDaemon is the process manager that creates and control multiple spawned processes to monitor.
+ * @classdec DaemonizerDaemon is the process manager that creates and control multiple spawned processes.
  */
 
-class DaemonizerServer {
+class DaemonizerServer extends EventEmitter {
   constructor (config = {}) {
+    super();
     this._runningProcesses = [];
     this.config = Object.assign({}, defaultConfig, config);
-    this._startDaemeonComm();
+    this._startDaemonComm();
 
     // save pid
     writeJsonSync(this.config.runningThread, Object.assign({}, this.config, { pid: process.pid }));
   }
 
-  _startDaemeonComm () {
-    const server = http.createServer();
-    this._io = SocketIO(server);
+  /**
+   * Starts socket.io for IPC
+   * @private
+   */
+  _startDaemonComm () {
+    const app = new Koa();
+    this.server = app.listen(this.config.port, this.config.ip, () => {
+      this.emit('ready');
+    });
+    this._io = SocketIO(this.server);
 
     this._io.on('connect', socket => {
       // start a new process
@@ -252,17 +300,41 @@ class DaemonizerServer {
       });
 
       // status of the process
-      socket.on('status', async (payload) => {
+      // todo: add security layer per method using JWT
+      socket.on('exec', async (request) => {
         try {
-          socket.emit('status', { res: await this.status(payload) });
+          request = RequestSchema.parse(request);
         } catch (err) {
-          socket.emit('status', { err: err.message });
-          console.log(`error>>>`, err);
+          return
+        }
+
+        if (/^_/.test(request.command)) {
+          // accessing private method
+          return
+        }
+
+        const resultId = `res-${ request.id }`;
+
+        try {
+          socket.emit(resultId, { result: await this[request.command](...request.payload) });
+        } catch (err) {
+          socket.emit(resultId, { error: err.message });
+          // console.log(`error>>>`, err)
         }
       });
     });
+  }
 
-    server.listen(this.config.port, this.config.ip);
+  /**
+   * Stops socket.io for IPC
+   * @private
+   */
+  _stopDaemonComm () {
+    if (!this.server) {
+      return
+    }
+    this.server.close();
+    this.server = null;
   }
 
   /**
@@ -289,7 +361,7 @@ class DaemonizerServer {
    */
   findProcessByPid (pid) {
     let foundProcess;
-    if (id) {
+    if (pid) {
       this._runningProcesses.forEach(runningProcess => {
         if (runningProcess.pid === pid) {
           foundProcess = runningProcess;
@@ -302,13 +374,13 @@ class DaemonizerServer {
   _exit (runningProcess) {
     runningProcess.pid && console.log(`Closing process '${ runningProcess.pid }'`);
     const runningProcessIndex = this._runningProcesses.indexOf(runningProcess);
-    runningProcess.removeAllListeners();
+    // runningProcess.removeAllListeners()
 
     if (runningProcessIndex >= 0) {
       this._runningProcesses.splice(runningProcessIndex, 1);
     }
 
-    if (this._runningProcesses.length === 0) {
+    if (this.config.autoClose && this._runningProcesses.length === 0) {
       setTimeout(() => {
         if (this._runningProcesses.length === 0) {
           console.log(`Closing process manager since no sub-processes are running`);
@@ -316,6 +388,10 @@ class DaemonizerServer {
         }
       }, 1000);
     }
+  }
+
+  list () {
+    return this._runningProcesses
   }
 
   /**
@@ -345,12 +421,13 @@ class DaemonizerServer {
    *
    * @param {String} id
    */
-  stop ({ id }) {
+  stop (id) {
     const runningProcess = this.findProcessById(id);
     if (!runningProcess) {
       throw new Error(`Process ${ id } not found.`)
     }
 
+    console.log({ runningProcess });
     return runningProcess.stop()
   }
 
@@ -404,7 +481,7 @@ class DaemonizerServer {
     // gets status
     const processTable = [];
 
-    await Promise$1.each(this._runningProcesses, async (runningProcess) => {
+    await Promise.each(this._runningProcesses, async (runningProcess) => {
       if (id && runningProcess.id !== id) {
         return
       }
@@ -431,89 +508,4 @@ if (process.env.DAEMONIZER_DAEMON_START) {
   new DaemonizerServer();
 }
 
-const daemonizerConfig = {
-  daemonServerConnectionTimeout: 5000
-};
-
-const spawnDefaultOptions$2 = {
-  cwd: process.cwd()
-};
-
-/**
- * @classdec Daemonizer is a process manager that creates an instance to control multiple spawned processes to monitor.
- */
-
-class Daemonizer {
-  constructor (config = {}, serverConfig = {}) {
-    this.config = Object.assign({}, daemonizerConfig, config);
-    this.serverConfig = Object.assign({}, defaultConfig, serverConfig);
-    this._startDaemonComm();
-  }
-
-  _startDaemonComm () {
-    this.io = io(`http://${ this.serverConfig.ip }:${ this.serverConfig.port }`);
-  }
-
-  _resolver (resolve, reject) {
-    const to = setTimeout(() => {
-      reject(new Error('Timed out.'));
-    }, this.config.daemonServerConnectionTimeout);
-
-    return ({ err, res }) => {
-      clearTimeout(to);
-      if (err) {
-        return reject(new Error(err))
-      }
-
-      resolve(res);
-    }
-  }
-
-  /**
-   * Daemonizes a terminal application by sending the request to the running DaemonizerDaemon.
-   *
-   * @param {String} id - The command to run.
-   * @param {SpawnArgs} spawnArgs - List of string arguments.
-   * @param {RunningProcessOptions} processOptions - List of string arguments.
-   */
-  async fork ({ id, spawnArgs, processOptions }) {
-    // todo: check if a daemon is running... otherwise, run one?
-    if (!DaemonizerServer.isRunning()) {
-      DaemonizerServer.start();
-    }
-
-    return new Promise((resolve, reject) => {
-      this.io.once('started', this._resolver(resolve, reject));
-      this.io.emit('start', { id, spawnArgs, processOptions });
-    })
-  }
-
-  async stop (id) {
-    if (!DaemonizerServer.isRunning()) {
-      throw new Error(`DaemonizerServer not running.`)
-    }
-
-    return new Promise((resolve, reject) => {
-      this.io.once('stopped', this._resolver(resolve, reject));
-      this.io.emit('stop', { id });
-    })
-  }
-
-  async status (id) {
-    if (!DaemonizerServer.isRunning()) {
-      throw new Error(`DaemonizerServer not running.`)
-    }
-
-    return new Promise((resolve, reject) => {
-      this.io.once('status', this._resolver(resolve, reject));
-      this.io.emit('status', { id });
-    })
-  }
-}
-
-var index = {
-  DaemonizerServer,
-  Daemonizer
-};
-
-export default index;
+export { DaemonizerServer };
