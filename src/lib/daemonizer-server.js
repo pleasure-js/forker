@@ -1,6 +1,6 @@
 import { spawn } from 'child_process'
 import { RunningProcess } from './running-process.js'
-import http from 'http'
+import Koa from 'koa'
 import SocketIO from 'socket.io'
 import path from 'path'
 import fs from 'fs'
@@ -10,6 +10,8 @@ import { defaultConfig } from './default-config.js'
 import pidusage from 'pidusage'
 import Promise from 'bluebird'
 import filesize from 'filesize'
+import { EventEmitter } from 'events'
+import { RequestSchema } from './request.js'
 
 const pidInfo = Promise.promisify(pidusage)
 
@@ -22,22 +24,30 @@ const spawnRequiredOptions = {
 }
 
 /**
- * @classdec DaemonizerDaemon is the process manager that creates and control multiple spawned processes to monitor.
+ * @classdec DaemonizerDaemon is the process manager that creates and control multiple spawned processes.
  */
 
-export class DaemonizerServer {
+export class DaemonizerServer extends EventEmitter {
   constructor (config = {}) {
+    super()
     this._runningProcesses = []
     this.config = Object.assign({}, defaultConfig, config)
-    this._startDaemeonComm()
+    this._startDaemonComm()
 
     // save pid
     writeJsonSync(this.config.runningThread, Object.assign({}, this.config, { pid: process.pid }))
   }
 
-  _startDaemeonComm () {
-    const server = http.createServer()
-    this._io = SocketIO(server)
+  /**
+   * Starts socket.io for IPC
+   * @private
+   */
+  _startDaemonComm () {
+    const app = new Koa()
+    this.server = app.listen(this.config.port, this.config.ip, () => {
+      this.emit('ready')
+    })
+    this._io = SocketIO(this.server)
 
     this._io.on('connect', socket => {
       // start a new process
@@ -61,17 +71,41 @@ export class DaemonizerServer {
       })
 
       // status of the process
-      socket.on('status', async (payload) => {
+      // todo: add security layer per method using JWT
+      socket.on('exec', async (request) => {
         try {
-          socket.emit('status', { res: await this.status(payload) })
+          request = RequestSchema.parse(request)
         } catch (err) {
-          socket.emit('status', { err: err.message })
-          console.log(`error>>>`, err)
+          return
+        }
+
+        if (/^_/.test(request.command)) {
+          // accessing private method
+          return
+        }
+
+        const resultId = `res-${ request.id }`
+
+        try {
+          socket.emit(resultId, { result: await this[request.command](...request.payload) })
+        } catch (err) {
+          socket.emit(resultId, { error: err.message })
+          // console.log(`error>>>`, err)
         }
       })
     })
+  }
 
-    server.listen(this.config.port, this.config.ip)
+  /**
+   * Stops socket.io for IPC
+   * @private
+   */
+  _stopDaemonComm () {
+    if (!this.server) {
+      return
+    }
+    this.server.close()
+    this.server = null
   }
 
   /**
@@ -98,7 +132,7 @@ export class DaemonizerServer {
    */
   findProcessByPid (pid) {
     let foundProcess
-    if (id) {
+    if (pid) {
       this._runningProcesses.forEach(runningProcess => {
         if (runningProcess.pid === pid) {
           foundProcess = runningProcess
@@ -117,7 +151,7 @@ export class DaemonizerServer {
       this._runningProcesses.splice(runningProcessIndex, 1)
     }
 
-    if (this._runningProcesses.length === 0) {
+    if (this.config.autoClose && this._runningProcesses.length === 0) {
       setTimeout(() => {
         if (this._runningProcesses.length === 0) {
           console.log(`Closing process manager since no sub-processes are running`)
@@ -125,6 +159,10 @@ export class DaemonizerServer {
         }
       }, 1000)
     }
+  }
+
+  list () {
+    return this._runningProcesses
   }
 
   /**
@@ -154,12 +192,13 @@ export class DaemonizerServer {
    *
    * @param {String} id
    */
-  stop ({ id }) {
+  stop (id) {
     const runningProcess = this.findProcessById(id)
     if (!runningProcess) {
       throw new Error(`Process ${ id } not found.`)
     }
 
+    console.log({ runningProcess })
     return runningProcess.stop()
   }
 
