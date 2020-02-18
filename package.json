@@ -8,9 +8,14 @@
   "scripts": {
     "build": "rollup -c",
     "build:live": "nodemon -w src --exec yarn build",
-    "build:docs": "jsdoc2md --template README.hbs --files dist/pleasure-daemonizer.js > README.md"
+    "build:docs": "jsdoc2md --template README.hbs --files dist/pleasure-daemonizer.js > README.md",
+    "test": "ava --serial --verbose"
   },
   "devDependencies": {
+    "@ava/babel": "^1.0.1",
+    "ava": "^3.3.0",
+    "axios": "^0.19.2",
+    "esm": "^3.2.25",
     "jsdoc-to-markdown": "^5.0.0",
     "nodemon": "^1.19.1",
     "rollup": "^1.12.4",
@@ -32,6 +37,17 @@
     "moment": "^2.24.0",
     "pidusage": "^2.0.17",
     "socket.io": "^2.2.0",
-    "socket.io-client": "^2.2.0"
+    "socket.io-client": "^2.2.0",
+    "tree-kill": "^1.2.2"
+  },
+  "ava": {
+    "babel": true,
+    "files": [
+      "client/**/*.unit.js",
+      "test/**/*.test.js"
+    ],
+    "require": [
+      "esm"
+    ]
   }
 }
