@@ -22,6 +22,7 @@ if (process.env.DAEMONIZER_DAEMON_CONFIG) {
 
 export const defaultConfig = Object.assign({
   runningThread: path.join(__dirname, '../.running'),
-  port: process.env.DAEMONIZER_DEAMON_PORT || 1111,
+  port: 1111,
+  autoClose: false,
   ip: '127.0.0.1'
 }, envConfig)

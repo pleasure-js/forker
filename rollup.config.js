@@ -37,7 +37,7 @@ export default [
     input: 'src/index.js',
     output: [
       {
-        file: `dist/${name}.js`,
+        file: `dist/daemonizer.js`,
         format: 'cjs',
         banner
       },
@@ -48,7 +48,29 @@ export default [
     input: 'src/index.js',
     output: [
       {
-        file: `dist/${name}.esm.js`,
+        file: `dist/daemonizer.esm.js`,
+        format: 'esm',
+        banner
+      }
+    ],
+    plugins
+  },
+  {
+    input: 'src/lib/daemonizer-client.js',
+    output: [
+      {
+        file: `dist/daemonizer-client.js`,
+        format: 'cjs',
+        banner
+      },
+    ],
+    plugins
+  },
+  {
+    input: 'src/lib/daemonizer-client.js',
+    output: [
+      {
+        file: `dist/daemonizer-client.esm.js`,
         format: 'esm',
         banner
       }

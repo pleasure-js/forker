@@ -20,11 +20,13 @@
     "rollup-plugin-json": "^4.0.0"
   },
   "dependencies": {
+    "@devtin/schema-validator": "^2.1.4",
     "bluebird": "^3.5.5",
     "cli-table": "^0.3.1",
     "filesize": "^4.1.2",
     "fs-extra": "^8.0.1",
     "is-running": "^2.1.0",
+    "koa": "^2.11.0",
     "lodash": "^4.17.11",
     "lsof": "^0.1.0",
     "moment": "^2.24.0",
