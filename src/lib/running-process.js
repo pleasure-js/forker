@@ -1,5 +1,9 @@
 import { EventEmitter } from 'events'
 import { spawn } from 'child_process'
+import Kill from 'tree-kill'
+import util from 'util'
+
+const kill = util.promisify(Kill)
 
 /**
  * @typedef {Object} RunningProcessOptions - Spawn arguments
@@ -140,15 +144,15 @@ export class RunningProcess extends EventEmitter {
   /**
    * Re-starts the program
    */
-  stop () {
-    this._stop = true
-    if (this._spawnChild) {
-      this._spawnChild.kill('SIGINT')
-      this._spawnChild = null
+  async stop () {
+    if (this._stop) {
+      return
     }
+    this._stop = true
+    await kill(this.pid)
+    this._spawnChild = null
     this.emit('exit')
     this.removeAllListeners()
-    return this
   }
 
   toJSON () {
