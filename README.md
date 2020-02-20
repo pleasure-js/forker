@@ -6,8 +6,6 @@
 </dd>
 <dt><a href="#DaemonizerServer">DaemonizerServer</a></dt>
 <dd></dd>
-<dt><a href="#Daemonizer">Daemonizer</a></dt>
-<dd></dd>
 </dl>
 
 ## Typedefs
@@ -71,7 +69,7 @@ Re-starts the program
 
 ## DaemonizerServer
 **Kind**: global class  
-**Classdec**: DaemonizerDaemon is the process manager that creates and control multiple spawned processes to monitor.  
+**Classdec**: DaemonizerDaemon is the process manager that creates and control multiple spawned processes.  
 
 * [DaemonizerServer](#DaemonizerServer)
     * _instance_
@@ -155,24 +153,6 @@ running.
 | config | [<code>DaemonizerConfig</code>](#DaemonizerConfig) | Defaults to default config. |
 | env | <code>Object</code> | Environment key-value pairs. |
 
-<a name="Daemonizer"></a>
-
-## Daemonizer
-**Kind**: global class  
-**Classdec**: Daemonizer is a process manager that creates an instance to control multiple spawned processes to monitor.  
-<a name="Daemonizer+fork"></a>
-
-### daemonizer.fork(id, spawnArgs, processOptions)
-Daemonizes a terminal application by sending the request to the running DaemonizerDaemon.
-
-**Kind**: instance method of [<code>Daemonizer</code>](#Daemonizer)  
-
-| Param | Type | Description |
-| --- | --- | --- |
-| id | <code>String</code> | The command to run. |
-| spawnArgs | [<code>SpawnArgs</code>](#SpawnArgs) | List of string arguments. |
-| processOptions | [<code>RunningProcessOptions</code>](#RunningProcessOptions) | List of string arguments. |
-
 <a name="RunningProcessOptions"></a>
 
 ## RunningProcessOptions : <code>Object</code>
@@ -201,7 +181,7 @@ Spawn arguments
 | --- | --- | --- |
 | command | <code>String</code> | The command to run. |
 | args | <code>Array</code> | List of string arguments. |
-| options | <code>Object</code> | `child_process.spawn` options. |
+| options | <code>Object</code> | `child_process.spawn` |
 
 <a name="ENV"></a>
 

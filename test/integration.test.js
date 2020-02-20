@@ -33,6 +33,28 @@ test(`Daemonizer forks a process`, async t => {
   processes.push(res.id)
 })
 
+test(`Daemonizer forks a process retrieving progress`, async t => {
+  const process = await client.fork({
+    id: 'loop2',
+    spawnArgs: {
+      command: path.join(__dirname, 'fixtures/forkables/loop.sh')
+    },
+    runningProcessOptions: {
+      stdio: ['pipe', 'pipe', 'pipe']
+    }
+  })
+  t.truthy(process)
+  processes.push(process.id)
+  return new Promise((resolve, reject) => {
+    client.io.on(`progress-${ process.id }`, testProgress => {
+      t.true(/^loop [\d]+\n$/.test(testProgress))
+      t.pass()
+      resolve()
+    })
+    setTimeout(reject, 1000)
+  })
+})
+
 test(`List processes`, async t => {
   const list = await client.list()
   t.truthy(list)

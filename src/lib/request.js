@@ -1,6 +1,6 @@
 import { Schema, Transformers } from '@devtin/schema-validator'
+import { uuid, UUIDPattern } from './uuid.js'
 
-const UUIDPattern = /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/
 Transformers.id = {
   settings: {
     loaders: [{
@@ -8,24 +8,25 @@ Transformers.id = {
       regex: [UUIDPattern, `{ value } is not a valid UUID`]
     }],
     required: false,
-    default () {
-      // GUID / UUID RFC4122 version 4 taken from: https://stackoverflow.com/a/2117523/1064165
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-        let r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8)
-        return v.toString(16)
-      })
-    }
+    default: uuid
   }
 }
 
+/**
+ * @typedef {Object} Request
+ * @property {String} id - uuid
+ * @property {String} method - the method
+ * @property {Array} payload - arguments to pass to given method
+ * @type {Schema}
+ */
 export const RequestSchema = new Schema({
   id: {
     type: 'id',
     required: false
   },
-  command: {
+  method: {
     type: String,
-    required: [true, `Please enter the command to execute`]
+    required: [true, `Please enter the method to execute`]
   },
   payload: {
     type: Array,

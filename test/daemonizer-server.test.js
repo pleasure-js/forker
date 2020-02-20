@@ -23,6 +23,17 @@ test(`Listens http on given port`, async t => {
   t.is(error.message, `Request failed with status code 404`)
 })
 
+test(`Triggers actions via http`, async t => {
+  const { data: { id, result/*, error*/ } } = await driver.post('/fork?wait', {
+    spawnArgs: {
+      command: 'ls',
+      args: ['-la']
+    }
+  })
+  t.truthy(id)
+  t.truthy(result)
+})
+
 test(`Listens for socket.io`, async t => {
   return new Promise(resolve => {
     socket.on('connect', resolve)
@@ -37,6 +48,6 @@ test(`Executes methods in class via socket.io`, async t => {
       t.is(payload.myPayload, 'yes')
       resolve()
     }
-    socket.emit('exec', { command: 'customMethod', payload: [{ myPayload: 'yes' }] })
+    socket.emit('exec', { method: 'customMethod', payload: [{ myPayload: 'yes' }] })
   })
 })

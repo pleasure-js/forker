@@ -1,6 +1,8 @@
 import { spawn } from 'child_process'
 import { RunningProcess } from './running-process.js'
 import Koa from 'koa'
+import koaBody from 'koa-body'
+import Router from 'koa-router'
 import SocketIO from 'socket.io'
 import path from 'path'
 import fs from 'fs'
@@ -12,6 +14,8 @@ import Promise from 'bluebird'
 import filesize from 'filesize'
 import { EventEmitter } from 'events'
 import { RequestSchema } from './request.js'
+import { uuid } from './uuid.js'
+import castArray from 'lodash/castArray'
 
 const pidInfo = Promise.promisify(pidusage)
 
@@ -36,6 +40,19 @@ export class DaemonizerServer extends EventEmitter {
 
     // save pid
     writeJsonSync(this.config.runningThread, Object.assign({}, this.config, { pid: process.pid }))
+
+    // fork logic
+    this.on('request-start', ({ socket, request }) => {
+      if (request.command === 'fork') {
+        const processId = request.payload[0].id = request.payload[0].id || uuid()
+        const progress = (...payload) => { socket.emit(`progress-${ processId }`, ...payload) }
+
+        this.on(`progress-${ processId }`, progress)
+        this.once(`request-end-${ processId }`, () => {
+          this.off(`progress-${ processId }`, progress)
+        })
+      }
+    })
   }
 
   /**
@@ -43,7 +60,49 @@ export class DaemonizerServer extends EventEmitter {
    * @private
    */
   _startDaemonComm () {
+    const router = Router()
     const app = new Koa()
+
+    app.use(koaBody())
+
+    app.use(async (ctx, next) => {
+      try {
+        await next()
+      } catch (err) {
+        ctx.body = { error: err.message }
+        console.log(err)
+      }
+    })
+
+    router.post(`/fork`, async ctx => {
+      // todo: add jwt auth
+      const fork = ctx.request.body
+
+      if (Object.hasOwnProperty.call(ctx.request.query, 'wait')) {
+        Object.assign(fork, {
+          runningProcessOptions: {
+            stdio: ['pipe', 'pipe', 'pipe'],
+            autoRestart: false
+          }
+        })
+      }
+
+      const runningProcess = this.fork(fork)
+      const { id } = runningProcess
+
+      if (Object.hasOwnProperty.call(ctx.request.query, 'wait')) {
+        ctx.body = {
+          id,
+          ...(await (new Promise((resolve) => {
+            runningProcess.on('done', resolve)
+          })))
+        }
+        return
+      }
+
+      ctx.body = { id }
+    })
+    app.use(router.routes())
     this.server = app.listen(this.config.port, this.config.ip, () => {
       this.emit('ready')
     })
@@ -72,28 +131,40 @@ export class DaemonizerServer extends EventEmitter {
 
       // status of the process
       // todo: add security layer per method using JWT
-      socket.on('exec', async (request) => {
-        try {
-          request = RequestSchema.parse(request)
-        } catch (err) {
-          return
-        }
-
-        if (/^_/.test(request.command)) {
-          // accessing private method
-          return
-        }
-
+      socket.on('exec', async (rawRequest) => {
+        const { request, then: result } = this._exec(rawRequest)
         const resultId = `res-${ request.id }`
 
+        this.emit(`request-start`, { socket, request })
+
         try {
-          socket.emit(resultId, { result: await this[request.command](...request.payload) })
+          socket.emit(resultId, { result: await result() })
         } catch (err) {
           socket.emit(resultId, { error: err.message })
-          // console.log(`error>>>`, err)
+          console.log(`error>>>`, err)
         }
+
+        this.emit(`request-end`, { socket, request })
+        this.emit(`request-end-${ request.id }`, { socket, request })
+
       })
     })
+  }
+
+  /**
+   *
+   * @param {Request} request
+   * @return {{request: Request, then: Function}}
+   * @private
+   */
+  _exec (request) {
+    request = RequestSchema.parse(request)
+
+    if (/^_/.test(request.method) || !this[request.method]) {
+      throw new Error(`Unknown command`)
+    }
+
+    return { request, then: () => this[request.method](...castArray(request.payload)) }
   }
 
   /**
@@ -170,17 +241,24 @@ export class DaemonizerServer extends EventEmitter {
    * @param {String} id - Optional identifier for the process. If none if provided, the system will automatically try
    * to guess one.
    * @param {SpawnArgs} spawnArgs
-   * @param {RunningProcessOptions} processOptions
+   * @param {RunningProcessOptions} runningProcessOptions
    */
-  fork ({ id, spawnArgs, processOptions }) {
+  fork ({ id, spawnArgs, runningProcessOptions }) {
     const foundProcess = this.findProcessById(id)
 
     if (foundProcess) {
       return foundProcess
     }
 
-    const runningProcess = new RunningProcess(id, spawnArgs, processOptions)
-    const onExit = this._exit.bind(this, runningProcess)
+    // console.log({ id, spawnArgs, runningProcessOptions })
+    const runningProcess = new RunningProcess(id, spawnArgs, runningProcessOptions)
+
+    const onExit = () => {
+      runningProcess.off('output', ioOutputPipe)
+      runningProcess.off('error-output', ioErrorOutputPipe)
+      runningProcess.off('exit', onExit)
+      this._exit(runningProcess)
+    }
 
     const ioOutputPipe = input => {
       const destination = `progress-${ runningProcess.id }`

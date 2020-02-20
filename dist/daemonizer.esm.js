@@ -8,6 +8,8 @@ import { EventEmitter } from 'events';
 import Kill from 'tree-kill';
 import util from 'util';
 import Koa from 'koa';
+import koaBody from 'koa-body';
+import Router from 'koa-router';
 import SocketIO from 'socket.io';
 import path from 'path';
 import fs from 'fs';
@@ -17,6 +19,17 @@ import pidusage from 'pidusage';
 import Promise from 'bluebird';
 import filesize from 'filesize';
 import { Transformers, Schema } from '@devtin/schema-validator';
+import castArray from 'lodash/castArray';
+
+function uuid () {
+  // GUID / UUID RFC4122 version 4 taken from: https://stackoverflow.com/a/2117523/1064165
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    let r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16)
+  })
+}
+
+const UUIDPattern = /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/;
 
 const kill = util.promisify(Kill);
 
@@ -34,11 +47,7 @@ const defaultOptions = {
 };
 
 const spawnDefaultOptions = {
-  cwd: process.cwd()
-};
-
-const spawnRequiredOptions = {
-  // detached: true,
+  cwd: process.cwd(),
   stdio: 'ignore'
 };
 
@@ -46,7 +55,7 @@ const spawnRequiredOptions = {
  * @typedef {Object} SpawnArgs - Spawn arguments
  * @property {String} command - The command to run.
  * @property {Array} args - List of string arguments.
- * @property {Object} options - `child_process.spawn` options.
+ * @property {Object} options - `child_process.spawn`
  * @see [child_process.spawn](https://nodejs.org/api/child_process.html#child_process_child_process_spawn_command_args_options)
  */
 
@@ -61,7 +70,7 @@ class RunningProcess extends EventEmitter {
    */
   constructor (id, spawnArgs, options = {}) {
     super();
-    this._id = id || Date.now();
+    this._id = id || uuid();
     this._spawnArgs = spawnArgs;
     this._spawnChild = null;
     this._options = Object.assign({}, defaultOptions, options);
@@ -100,43 +109,60 @@ class RunningProcess extends EventEmitter {
       return this._spawnChild
     }
 
-    const toSpawn = {
-      command: this._spawnArgs.command,
-      args: this._spawnArgs.args,
-      options: Object.assign(
-        {},
-        spawnDefaultOptions,
-        this._spawnArgs.options, spawnRequiredOptions
-      )
-    };
-
-    console.log(JSON.stringify(toSpawn));
-
-    this._spawnChild = spawn(
-      this._spawnArgs.command,
-      this._spawnArgs.args,
-      Object.assign(
-        {},
-        spawnDefaultOptions,
-        this._spawnArgs.options, spawnRequiredOptions
-      )
+    const options = Object.assign(
+      {},
+      spawnDefaultOptions,
+      this._options
     );
+
+    // console.log({ options })
+
+    this._spawnChild = spawn(this._spawnArgs.command,
+      this._spawnArgs.args,
+      options
+    );
+
+    const result = [];
+    const error = [];
+
+    if (this._spawnChild.stdout) {
+      this._spawnChild.stdout.on('data', output => {
+        output = output.toString();
+        result.push(output);
+
+        this.emit('output', output);
+      });
+    }
+
+    if (this._spawnChild.stderr) {
+      this._spawnChild.stderr.on('data', err => {
+        err = err.toString();
+        error.push(err);
+
+        this.emit('error-output', err);
+      });
+    }
+
+    this._spawnChild.on('data', s => {
+      console.log(`data`, s.toString());
+    });
 
     this._spawnChild.on('error', err => {
       console.log(`sub process error`, err);
     });
 
     this._spawnChild.on('exit', (err) => {
-      console.log(`restarting because`, err);
       // unref
       this._spawnChild = null;
 
       if (!this._stop && this._options.autoRestart) {
+        console.log(`restarting`, this.id);
+
         setTimeout(() => {
           this.restart();
         }, this._options.waitBeforeRestart);
       } else {
-        this.emit('exit');
+        this.emit('done', { result, error });
       }
     });
 
@@ -210,7 +236,6 @@ const defaultConfig = Object.assign({
   ip: '127.0.0.1'
 }, envConfig);
 
-const UUIDPattern = /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/;
 Transformers.id = {
   settings: {
     loaders: [{
@@ -218,24 +243,25 @@ Transformers.id = {
       regex: [UUIDPattern, `{ value } is not a valid UUID`]
     }],
     required: false,
-    default () {
-      // GUID / UUID RFC4122 version 4 taken from: https://stackoverflow.com/a/2117523/1064165
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-        let r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16)
-      })
-    }
+    default: uuid
   }
 };
 
+/**
+ * @typedef {Object} Request
+ * @property {String} id - uuid
+ * @property {String} method - the method
+ * @property {Array} payload - arguments to pass to given method
+ * @type {Schema}
+ */
 const RequestSchema = new Schema({
   id: {
     type: 'id',
     required: false
   },
-  command: {
+  method: {
     type: String,
-    required: [true, `Please enter the command to execute`]
+    required: [true, `Please enter the method to execute`]
   },
   payload: {
     type: Array,
@@ -265,6 +291,19 @@ class DaemonizerServer extends EventEmitter {
 
     // save pid
     writeJsonSync(this.config.runningThread, Object.assign({}, this.config, { pid: process.pid }));
+
+    // fork logic
+    this.on('request-start', ({ socket, request }) => {
+      if (request.command === 'fork') {
+        const processId = request.payload[0].id = request.payload[0].id || uuid();
+        const progress = (...payload) => { socket.emit(`progress-${ processId }`, ...payload); };
+
+        this.on(`progress-${ processId }`, progress);
+        this.once(`request-end-${ processId }`, () => {
+          this.off(`progress-${ processId }`, progress);
+        });
+      }
+    });
   }
 
   /**
@@ -272,7 +311,49 @@ class DaemonizerServer extends EventEmitter {
    * @private
    */
   _startDaemonComm () {
+    const router = Router();
     const app = new Koa();
+
+    app.use(koaBody());
+
+    app.use(async (ctx, next) => {
+      try {
+        await next();
+      } catch (err) {
+        ctx.body = { error: err.message };
+        console.log(err);
+      }
+    });
+
+    router.post(`/fork`, async ctx => {
+      // todo: add jwt auth
+      const fork = ctx.request.body;
+
+      if (Object.hasOwnProperty.call(ctx.request.query, 'wait')) {
+        Object.assign(fork, {
+          runningProcessOptions: {
+            stdio: ['pipe', 'pipe', 'pipe'],
+            autoRestart: false
+          }
+        });
+      }
+
+      const runningProcess = this.fork(fork);
+      const { id } = runningProcess;
+
+      if (Object.hasOwnProperty.call(ctx.request.query, 'wait')) {
+        ctx.body = {
+          id,
+          ...(await (new Promise((resolve) => {
+            runningProcess.on('done', resolve);
+          })))
+        };
+        return
+      }
+
+      ctx.body = { id };
+    });
+    app.use(router.routes());
     this.server = app.listen(this.config.port, this.config.ip, () => {
       this.emit('ready');
     });
@@ -285,7 +366,7 @@ class DaemonizerServer extends EventEmitter {
           socket.emit('started', { res: this.fork(payload).toJSON() });
         } catch (err) {
           socket.emit('started', { err: err.message, payload });
-          console.log(`error>>>`, err);
+          // console.log(`error>>>`, err)
         }
       });
 
@@ -295,34 +376,46 @@ class DaemonizerServer extends EventEmitter {
           socket.emit('stopped', { res: this.stop(payload).toJSON() });
         } catch (err) {
           socket.emit('stopped', { err: err.message });
-          console.log(`error>>>`, err);
+          // console.log(`error>>>`, err)
         }
       });
 
       // status of the process
       // todo: add security layer per method using JWT
-      socket.on('exec', async (request) => {
-        try {
-          request = RequestSchema.parse(request);
-        } catch (err) {
-          return
-        }
-
-        if (/^_/.test(request.command)) {
-          // accessing private method
-          return
-        }
-
+      socket.on('exec', async (rawRequest) => {
+        const { request, then: result } = this._exec(rawRequest);
         const resultId = `res-${ request.id }`;
 
+        this.emit(`request-start`, { socket, request });
+
         try {
-          socket.emit(resultId, { result: await this[request.command](...request.payload) });
+          socket.emit(resultId, { result: await result() });
         } catch (err) {
           socket.emit(resultId, { error: err.message });
-          // console.log(`error>>>`, err)
+          console.log(`error>>>`, err);
         }
+
+        this.emit(`request-end`, { socket, request });
+        this.emit(`request-end-${ request.id }`, { socket, request });
+
       });
     });
+  }
+
+  /**
+   *
+   * @param {Request} request
+   * @return {{request: Request, then: Function}}
+   * @private
+   */
+  _exec (request) {
+    request = RequestSchema.parse(request);
+
+    if (/^_/.test(request.method) || !this[request.method]) {
+      throw new Error(`Unknown command`)
+    }
+
+    return { request, then: () => this[request.method](...castArray(request.payload)) }
   }
 
   /**
@@ -399,18 +492,40 @@ class DaemonizerServer extends EventEmitter {
    * @param {String} id - Optional identifier for the process. If none if provided, the system will automatically try
    * to guess one.
    * @param {SpawnArgs} spawnArgs
-   * @param {RunningProcessOptions} processOptions
+   * @param {RunningProcessOptions} runningProcessOptions
    */
-  fork ({ id, spawnArgs, processOptions }) {
+  fork ({ id, spawnArgs, runningProcessOptions }) {
     const foundProcess = this.findProcessById(id);
 
     if (foundProcess) {
       return foundProcess
     }
 
-    const runningProcess = new RunningProcess(id, spawnArgs, processOptions);
-    const onExit = this._exit.bind(this, runningProcess);
+    // console.log({ id, spawnArgs, runningProcessOptions })
+    const runningProcess = new RunningProcess(id, spawnArgs, runningProcessOptions);
 
+    const onExit = () => {
+      runningProcess.off('output', ioOutputPipe);
+      runningProcess.off('error-output', ioErrorOutputPipe);
+      runningProcess.off('exit', onExit);
+      this._exit(runningProcess);
+    };
+
+    const ioOutputPipe = input => {
+      const destination = `progress-${ runningProcess.id }`;
+      // console.log({ destination, input })
+      // this._io.emit(destination, input)
+      this.emit(destination, input);
+    };
+
+    const ioErrorOutputPipe = error => {
+      // console.log({ error })
+      // this._io.emit(`error-${ runningProcess.id }`, error)
+      this.emit(`error-${ runningProcess.id }`, error);
+    };
+
+    runningProcess.on('output', ioOutputPipe);
+    runningProcess.on('error-output', ioErrorOutputPipe);
     runningProcess.on('exit', onExit);
     this._runningProcesses.push(runningProcess);
 
@@ -427,7 +542,6 @@ class DaemonizerServer extends EventEmitter {
       throw new Error(`Process ${ id } not found.`)
     }
 
-    console.log({ runningProcess });
     return runningProcess.stop()
   }
 

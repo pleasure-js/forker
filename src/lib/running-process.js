@@ -2,6 +2,7 @@ import { EventEmitter } from 'events'
 import { spawn } from 'child_process'
 import Kill from 'tree-kill'
 import util from 'util'
+import { uuid } from './uuid.js'
 
 const kill = util.promisify(Kill)
 
@@ -19,11 +20,7 @@ export const defaultOptions = {
 }
 
 export const spawnDefaultOptions = {
-  cwd: process.cwd()
-}
-
-export const spawnRequiredOptions = {
-  // detached: true,
+  cwd: process.cwd(),
   stdio: 'ignore'
 }
 
@@ -31,7 +28,7 @@ export const spawnRequiredOptions = {
  * @typedef {Object} SpawnArgs - Spawn arguments
  * @property {String} command - The command to run.
  * @property {Array} args - List of string arguments.
- * @property {Object} options - `child_process.spawn` options.
+ * @property {Object} options - `child_process.spawn`
  * @see [child_process.spawn](https://nodejs.org/api/child_process.html#child_process_child_process_spawn_command_args_options)
  */
 
@@ -46,7 +43,7 @@ export class RunningProcess extends EventEmitter {
    */
   constructor (id, spawnArgs, options = {}) {
     super()
-    this._id = id || Date.now()
+    this._id = id || uuid()
     this._spawnArgs = spawnArgs
     this._spawnChild = null
     this._options = Object.assign({}, defaultOptions, options)
@@ -85,20 +82,15 @@ export class RunningProcess extends EventEmitter {
       return this._spawnChild
     }
 
-    const toSpawn = {
-      command: this._spawnArgs.command,
-      args: this._spawnArgs.args,
-      options: Object.assign(
-        {},
-        spawnDefaultOptions,
-        this._spawnArgs.options, spawnRequiredOptions
-      )
-    }
+    const options = Object.assign(
+      {},
+      spawnDefaultOptions,
+      this._options
+    )
 
-    console.log(JSON.stringify(toSpawn))
+    // console.log({ options })
 
-    this._spawnChild = spawn(
-      this._spawnArgs.command,
+    this._spawnChild = spawn(this._spawnArgs.command,
       this._spawnArgs.args,
       options
     )
@@ -133,16 +125,17 @@ export class RunningProcess extends EventEmitter {
     })
 
     this._spawnChild.on('exit', (err) => {
-      console.log(`restarting because`, err)
       // unref
       this._spawnChild = null
 
       if (!this._stop && this._options.autoRestart) {
+        console.log(`restarting`, this.id)
+
         setTimeout(() => {
           this.restart()
         }, this._options.waitBeforeRestart)
       } else {
-        this.emit('exit')
+        this.emit('done', { result, error })
       }
     })
 
