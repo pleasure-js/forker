@@ -182,6 +182,21 @@ export class DaemonizerServer extends EventEmitter {
     const runningProcess = new RunningProcess(id, spawnArgs, processOptions)
     const onExit = this._exit.bind(this, runningProcess)
 
+    const ioOutputPipe = input => {
+      const destination = `progress-${ runningProcess.id }`
+      // console.log({ destination, input })
+      // this._io.emit(destination, input)
+      this.emit(destination, input)
+    }
+
+    const ioErrorOutputPipe = error => {
+      // console.log({ error })
+      // this._io.emit(`error-${ runningProcess.id }`, error)
+      this.emit(`error-${ runningProcess.id }`, error)
+    }
+
+    runningProcess.on('output', ioOutputPipe)
+    runningProcess.on('error-output', ioErrorOutputPipe)
     runningProcess.on('exit', onExit)
     this._runningProcesses.push(runningProcess)
 
