@@ -100,12 +100,33 @@ export class RunningProcess extends EventEmitter {
     this._spawnChild = spawn(
       this._spawnArgs.command,
       this._spawnArgs.args,
-      Object.assign(
-        {},
-        spawnDefaultOptions,
-        this._spawnArgs.options, spawnRequiredOptions
-      )
+      options
     )
+
+    const result = []
+    const error = []
+
+    if (this._spawnChild.stdout) {
+      this._spawnChild.stdout.on('data', output => {
+        output = output.toString()
+        result.push(output)
+
+        this.emit('output', output)
+      })
+    }
+
+    if (this._spawnChild.stderr) {
+      this._spawnChild.stderr.on('data', err => {
+        err = err.toString()
+        error.push(err)
+
+        this.emit('error-output', err)
+      })
+    }
+
+    this._spawnChild.on('data', s => {
+      console.log(`data`, s.toString())
+    })
 
     this._spawnChild.on('error', err => {
       console.log(`sub process error`, err)
