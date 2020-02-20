@@ -300,7 +300,7 @@ class DaemonizerServer extends events.EventEmitter {
 
     // fork logic
     this.on('request-start', ({ socket, request }) => {
-      if (request.command === 'fork') {
+      if (request.method === 'fork') {
         const processId = request.payload[0].id = request.payload[0].id || uuid();
         const progress = (...payload) => { socket.emit(`progress-${ processId }`, ...payload); };
 
@@ -594,6 +594,12 @@ class DaemonizerServer extends events.EventEmitter {
 
     child.unref();
     return child.pid
+  }
+
+  static ensureRunning () {
+    if (!DaemonizerServer.isRunning()) {
+      return DaemonizerServer.start()
+    }
   }
 
   async status ({ id }) {

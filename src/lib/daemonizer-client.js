@@ -42,15 +42,15 @@ export class DaemonizerClient extends EventEmitter {
     }
 
     return singleton = new Proxy(new DaemonizerClient(config), {
-      get (target, command) {
-        if (target[command]) {
-          return target[command]
+      get (target, method) {
+        if (target[method]) {
+          return target[method]
         }
 
         return (...payload) => {
           return new Promise((resolve, reject) => {
             const request = RequestSchema.parse({
-              command,
+              method,
               payload
             })
             const resId = `res-${ request.id }`
