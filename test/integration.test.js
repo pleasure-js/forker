@@ -19,7 +19,6 @@ test.before(async () => {
 
 test.after.always(async () => {
   await Promise.each(processes, async id => {
-    console.log(`stopping`, id)
     await client.stop(id)
   })
 })

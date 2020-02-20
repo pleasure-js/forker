@@ -56,7 +56,7 @@ export class DaemonizerServer extends EventEmitter {
           socket.emit('started', { res: this.fork(payload).toJSON() })
         } catch (err) {
           socket.emit('started', { err: err.message, payload })
-          console.log(`error>>>`, err)
+          // console.log(`error>>>`, err)
         }
       })
 
@@ -66,7 +66,7 @@ export class DaemonizerServer extends EventEmitter {
           socket.emit('stopped', { res: this.stop(payload).toJSON() })
         } catch (err) {
           socket.emit('stopped', { err: err.message })
-          console.log(`error>>>`, err)
+          // console.log(`error>>>`, err)
         }
       })
 
@@ -198,7 +198,6 @@ export class DaemonizerServer extends EventEmitter {
       throw new Error(`Process ${ id } not found.`)
     }
 
-    console.log({ runningProcess })
     return runningProcess.stop()
   }
 

@@ -26,9 +26,11 @@ export class DaemonizerClient extends EventEmitter {
     }
     this.config = Object.assign({}, defaultServerConfig, daemonizerClientConfig, config)
     this.io = io(`http://${ this.config.ip }:${ this.config.port }`)
+
     this.io.on('connect', () => {
       this.emit('ready')
     })
+
     this.io.on('connect_error`', (err) => {
       this.emit('error', err)
     })
@@ -73,4 +75,3 @@ export class DaemonizerClient extends EventEmitter {
     })
   }
 }
-
