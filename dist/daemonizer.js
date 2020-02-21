@@ -171,6 +171,11 @@ class RunningProcess extends events.EventEmitter {
         }, this._options.waitBeforeRestart);
       } else {
         this.emit('done', { result, error });
+        this
+          .stop()
+          .catch(err => {
+            console.log(`Error auto-stopping process ${ this.id }`);
+          });
       }
     });
 

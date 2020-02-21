@@ -138,6 +138,11 @@ export class RunningProcess extends EventEmitter {
         }, this._options.waitBeforeRestart)
       } else {
         this.emit('done', { result, error })
+        this
+          .stop()
+          .catch(err => {
+            console.log(`Error auto-stopping process ${ this.id }`)
+          })
       }
     })
 
