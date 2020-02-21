@@ -102,10 +102,13 @@ export class DaemonizerServer extends EventEmitter {
 
       ctx.body = { id }
     })
+
     app.use(router.routes())
+
     this.server = app.listen(this.config.port, this.config.ip, () => {
       this.emit('ready')
     })
+
     this._io = SocketIO(this.server)
 
     this._io.on('connect', socket => {
@@ -146,7 +149,6 @@ export class DaemonizerServer extends EventEmitter {
 
         this.emit(`request-end`, { socket, request })
         this.emit(`request-end-${ request.id }`, { socket, request })
-
       })
     })
   }
@@ -244,6 +246,7 @@ export class DaemonizerServer extends EventEmitter {
    * @param {RunningProcessOptions} runningProcessOptions
    */
   fork ({ id, spawnArgs, runningProcessOptions }) {
+    // console.log(`fork`, { id, spawnArgs, runningProcessOptions })
     const foundProcess = this.findProcessById(id)
 
     if (foundProcess) {

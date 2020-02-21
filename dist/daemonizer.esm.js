@@ -69,6 +69,7 @@ class RunningProcess extends EventEmitter {
    * @param {RunningProcessOptions} options - Configuration options
    */
   constructor (id, spawnArgs, options = {}) {
+    // console.log(`running process`, { id, spawnArgs, options })
     super();
     this._id = id || uuid();
     this._spawnArgs = spawnArgs;
@@ -116,11 +117,12 @@ class RunningProcess extends EventEmitter {
     );
 
     // console.log({ options })
-
-    this._spawnChild = spawn(this._spawnArgs.command,
+    const spawnArgs = [this._spawnArgs.command,
       this._spawnArgs.args,
       options
-    );
+    ];
+    // console.log(`spawning`, ...spawnArgs)
+    this._spawnChild = spawn(...spawnArgs);
 
     const result = [];
     const error = [];
@@ -144,11 +146,11 @@ class RunningProcess extends EventEmitter {
     }
 
     this._spawnChild.on('data', s => {
-      console.log(`data`, s.toString());
+      // console.log(`data`, s.toString())
     });
 
     this._spawnChild.on('error', err => {
-      console.log(`sub process error`, err);
+      // console.log(`sub process error`, err)
     });
 
     this._spawnChild.on('exit', (err) => {
@@ -156,7 +158,7 @@ class RunningProcess extends EventEmitter {
       this._spawnChild = null;
 
       if (!this._stop && this._options.autoRestart) {
-        console.log(`restarting`, this.id);
+        console.log(`restarting`, this.id, err);
 
         setTimeout(() => {
           this.restart();
@@ -353,10 +355,13 @@ class DaemonizerServer extends EventEmitter {
 
       ctx.body = { id };
     });
+
     app.use(router.routes());
+
     this.server = app.listen(this.config.port, this.config.ip, () => {
       this.emit('ready');
     });
+
     this._io = SocketIO(this.server);
 
     this._io.on('connect', socket => {
@@ -397,7 +402,6 @@ class DaemonizerServer extends EventEmitter {
 
         this.emit(`request-end`, { socket, request });
         this.emit(`request-end-${ request.id }`, { socket, request });
-
       });
     });
   }
@@ -495,6 +499,7 @@ class DaemonizerServer extends EventEmitter {
    * @param {RunningProcessOptions} runningProcessOptions
    */
   fork ({ id, spawnArgs, runningProcessOptions }) {
+    // console.log(`fork`, { id, spawnArgs, runningProcessOptions })
     const foundProcess = this.findProcessById(id);
 
     if (foundProcess) {

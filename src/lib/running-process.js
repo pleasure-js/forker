@@ -42,6 +42,7 @@ export class RunningProcess extends EventEmitter {
    * @param {RunningProcessOptions} options - Configuration options
    */
   constructor (id, spawnArgs, options = {}) {
+    // console.log(`running process`, { id, spawnArgs, options })
     super()
     this._id = id || uuid()
     this._spawnArgs = spawnArgs
@@ -89,11 +90,12 @@ export class RunningProcess extends EventEmitter {
     )
 
     // console.log({ options })
-
-    this._spawnChild = spawn(this._spawnArgs.command,
+    const spawnArgs = [this._spawnArgs.command,
       this._spawnArgs.args,
       options
-    )
+    ]
+    // console.log(`spawning`, ...spawnArgs)
+    this._spawnChild = spawn(...spawnArgs)
 
     const result = []
     const error = []
@@ -117,11 +119,11 @@ export class RunningProcess extends EventEmitter {
     }
 
     this._spawnChild.on('data', s => {
-      console.log(`data`, s.toString())
+      // console.log(`data`, s.toString())
     })
 
     this._spawnChild.on('error', err => {
-      console.log(`sub process error`, err)
+      // console.log(`sub process error`, err)
     })
 
     this._spawnChild.on('exit', (err) => {
@@ -129,7 +131,7 @@ export class RunningProcess extends EventEmitter {
       this._spawnChild = null
 
       if (!this._stop && this._options.autoRestart) {
-        console.log(`restarting`, this.id)
+        console.log(`restarting`, this.id, err)
 
         setTimeout(() => {
           this.restart()
