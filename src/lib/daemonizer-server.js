@@ -349,6 +349,7 @@ export class DaemonizerServer extends EventEmitter {
   }
 
   async status ({ id }) {
+    console.log(`status`, { id })
     // connects to main thread via socket
     // gets status
     const processTable = []
