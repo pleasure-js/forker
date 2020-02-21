@@ -192,7 +192,9 @@ class RunningProcess extends EventEmitter {
       return
     }
     this._stop = true;
-    await kill(this.pid);
+    if (this.pid) {
+      await kill(this.pid);
+    }
     this._spawnChild = null;
     this.emit('exit');
     this.removeAllListeners();
