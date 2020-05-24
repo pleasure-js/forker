@@ -33,12 +33,18 @@ export const spawnDefaultOptions = {
  */
 
 /**
- * @classdesc Holds the information of a running process
+ * @classdesc A running process
+ * @property {String} _id - daemonizer process id
+ * @property {SpawnArgs} _spawnArgs - spawn arguments used to create the process
+ * @property {RunningProcessOptions} _options - Running process configuration options
+ * @property {Date} started  - When the process was requested
+ * @property {Date} lastRestart  - When the process was restarted the last time
+ * @property {Date} lastRestart  - When the process was restarted the last time
  */
 export class RunningProcess extends EventEmitter {
   /**
-   * @param {String} id - The command to run.
-   * @param {SpawnArgs} spawnArgs - Spawn arguments
+   * @param {String} id - Desired daemonizer process id
+   * @param {SpawnArgs} spawnArgs - Spawn arguments to create the process
    * @param {RunningProcessOptions} options - Configuration options
    */
   constructor (id, spawnArgs, options = {}) {
@@ -49,18 +55,26 @@ export class RunningProcess extends EventEmitter {
     this._spawnChild = null
     this._options = Object.assign({}, defaultOptions, options)
     this._started = Date.now()
-    this._lastRestarted = Date.now()
-    this._restarts = 0
+    this._lastRestart = Date.now()
+    this._restarts = []
     this._stop = false // determines whether the program can be started again or not
     this.start()
   }
 
   get restarts () {
+    return this._restarts.length
+  }
+
+  get restartsReport () {
     return this._restarts
   }
 
   get started () {
     return this._started
+  }
+
+  get lastRestart () {
+    return this._lastRestart
   }
 
   get pid () {
@@ -153,12 +167,12 @@ export class RunningProcess extends EventEmitter {
    * Re-starts the program
    */
   restart () {
-    if (this._options.maximumAutoRestart >= 0 && this._restarts + 1 > this._options.maximumAutoRestart) {
+    if (this._options.maximumAutoRestart >= 0 && this._restarts.length + 1 > this._options.maximumAutoRestart) {
       return this.stop()
     }
 
-    this._restarts++
-    this._lastRestarted = Date.now()
+    this._lastRestart = Date.now()
+    this._restarts.push(this._lastRestart)
     return this.start()
   }
 
@@ -183,7 +197,7 @@ export class RunningProcess extends EventEmitter {
       id: this._id,
       pid: this._spawnChild ? (this._spawnChild.pid || '-!') : '--',
       started: this._started,
-      lastRestarted: this._lastRestarted,
+      lastRestart: this._lastRestart,
       restarts: this._restarts,
       spawnArgs: this._spawnArgs,
       stop: this._stop
