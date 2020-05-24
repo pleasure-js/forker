@@ -614,7 +614,8 @@ class DaemonizerServer extends events.EventEmitter {
     }
   }
 
-  async status (id) {
+  async status ({ id }) {
+    console.log(`status`, { id });
     // connects to main thread via socket
     // gets status
     const processTable = [];

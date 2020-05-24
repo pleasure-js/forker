@@ -1,7 +1,7 @@
 import path from 'path'
-import commonjs from 'rollup-plugin-commonjs'
-import json from 'rollup-plugin-json'
-import alias from 'rollup-plugin-alias'
+import commonjs from '@rollup/plugin-commonjs'
+import json from '@rollup/plugin-json'
+import alias from '@rollup/plugin-alias'
 import { name, version, author, license } from './package.json'
 
 const fromSrc = (...paths) => {
@@ -10,8 +10,16 @@ const fromSrc = (...paths) => {
 
 const plugins = [
   alias({
-    src: fromSrc(),
-    lib: fromSrc('lib')
+    entries: [
+      {
+        find: 'src',
+        replacement: fromSrc()
+      },
+      {
+        find: 'lib',
+        replacement: fromSrc('lib')
+      }
+    ]
   }),
   json(),
   commonjs({
