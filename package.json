@@ -35,7 +35,7 @@
     "koa-router": "^8.0.8",
     "lodash": "^4.17.15",
     "lsof": "^0.1.0",
-    "moment": "^2.26.0",
+    "moment": "^2.29.4",
     "pidusage": "^2.0.20",
     "socket.io": "^2.3.0",
     "socket.io-client": "^2.3.0",
